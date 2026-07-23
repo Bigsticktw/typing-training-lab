@@ -16,7 +16,8 @@ Typing Training Lab 是一個以 React、Zustand 與 Socket.IO 製作的鍵盤�
 - 四種介面主題、音效與虛擬鍵盤提示。
 - 本機統計：準確率、PPM、平均延遲、錯誤按鍵與歷史紀錄。
 - 2–4 人 Socket.IO 房間、快速配對、準備狀態、即時排行與結果頁。
-- 前後端共 20 個自動化測試，涵蓋計分、字元生成、Zustand stores、RoomManager、輸入驗證及 rate limiter。
+- 前後端共 20 個單元／整合測試，涵蓋計分、字元生成、Zustand stores、RoomManager、輸入驗證及 rate limiter。
+- Playwright 以兩個隔離瀏覽器情境驗證建立房間、加入、雙方準備、同步開局及伺服器權威計分。
 
 ### 多人模式安全設計
 
@@ -81,11 +82,16 @@ ALLOWED_ORIGINS=http://localhost:5173,https://your-site.example
 
 ```bash
 npm run check
+npm run test:e2e
 npm audit --omit=dev
 npm audit --prefix server --omit=dev
 ```
 
-GitHub Actions 會在 push 與 pull request 執行前後端 lint、test、build 及 production dependency audit。
+GitHub Actions 會在 push 與 pull request 執行前後端 lint、test、build、Playwright 雙人流程及 production dependency audit。Dependabot 每週檢查前後端 npm 套件，每月檢查 GitHub Actions。
+
+### 授權
+
+本專案採用 [MIT License](./LICENSE)。
 
 ---
 
@@ -99,7 +105,8 @@ Typing Training Lab is a React, Zustand, and Socket.IO portfolio project for del
 - Four visual themes, audio feedback, and a virtual keyboard.
 - Local analytics for accuracy, PPM, average latency, mistakes, and session history.
 - 2–4 player Socket.IO rooms with quick match, ready state, live ranking, and results.
-- 20 automated client/server tests covering scoring, character generation, Zustand stores, RoomManager, payload validation, and rate limiting.
+- 20 client/server unit and integration tests covering scoring, character generation, Zustand stores, RoomManager, payload validation, and rate limiting.
+- A two-context Playwright test covers room creation, joining, both players becoming ready, synchronized game start, and server-authoritative scoring.
 
 ### Multiplayer hardening
 
@@ -152,8 +159,13 @@ ALLOWED_ORIGINS=http://localhost:5173,https://your-site.example
 
 ```bash
 npm run check
+npm run test:e2e
 npm audit --omit=dev
 npm audit --prefix server --omit=dev
 ```
 
-GitHub Actions runs client/server lint, tests, builds, and production dependency audits for every push and pull request.
+GitHub Actions runs client/server lint, tests, builds, the two-player Playwright flow, and production dependency audits for every push and pull request. Dependabot checks both npm workspaces weekly and GitHub Actions monthly.
+
+### License
+
+This project is available under the [MIT License](./LICENSE).

@@ -10,10 +10,12 @@
     "lint": "npm run lint:client && npm run lint:server",
     "lint:client": "eslint src",
     "lint:server": "eslint server/src",
+    "lint:e2e": "eslint e2e playwright.config.ts",
     "preview": "vite preview",
     "test": "vitest run --dir src",
     "test:server": "npm --prefix server test",
-    "check": "npm run lint && npm test && npm run test:server && npm run build && npm run build:server"
+    "test:e2e": "playwright test",
+    "check": "npm run lint && npm run lint:e2e && npm test && npm run test:server && npm run build && npm run build:server"
   },
   "dependencies": {
     "@types/recharts": "^1.8.29",
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

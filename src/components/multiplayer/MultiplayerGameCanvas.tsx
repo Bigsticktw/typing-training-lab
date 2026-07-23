@@ -170,7 +170,7 @@ export function MultiplayerGameCanvas() {
         : 100;
 
     return (
-        <div className="flex flex-col items-center justify-center p-4 w-full">
+        <div data-testid="multiplayer-game" className="flex flex-col items-center justify-center p-4 w-full">
             {/* 隱藏輸入框 */}
             <input
                 ref={inputRef}
@@ -209,13 +209,13 @@ export function MultiplayerGameCanvas() {
                     </div>
                     <div className="text-center">
                         <div className="text-sm opacity-50">分數</div>
-                        <div className="text-3xl font-bold font-mono text-[var(--accent)]">
+                        <div data-testid="my-score" className="text-3xl font-bold font-mono text-[var(--accent)]">
                             {myStats?.score ?? 0}
                         </div>
                     </div>
                     <div className="text-center">
                         <div className="text-sm opacity-50">錯誤</div>
-                        <div className="text-3xl font-bold font-mono text-red-500">
+                        <div data-testid="my-errors" className="text-3xl font-bold font-mono text-red-500">
                             {myStats?.errors ?? 0}
                         </div>
                     </div>
@@ -241,6 +241,7 @@ export function MultiplayerGameCanvas() {
             <div className="mb-6 flex items-center gap-6">
                 <AnimatePresence mode="wait">
                     <motion.div
+                        data-testid="current-character"
                         key={currentCharIndex}
                         initial={{ scale: 0.5, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
@@ -285,6 +286,7 @@ export function MultiplayerGameCanvas() {
             <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {rankings.map((player, index) => (
                     <div
+                        data-player-name={player.name}
                         key={player.id}
                         className={clsx(
                             "bg-[var(--keyboard-bg)] p-4 rounded-xl border-2 transition-all",
@@ -304,7 +306,7 @@ export function MultiplayerGameCanvas() {
                         <div className="flex justify-between text-sm">
                             <span className="flex items-center gap-1">
                                 <Target size={14} className="text-green-500" />
-                                {player.stats?.score ?? 0}
+                                <span data-testid="ranking-score">{player.stats?.score ?? 0}</span>
                             </span>
                             <span className="flex items-center gap-1">
                                 <Zap size={14} className="text-red-500" />
