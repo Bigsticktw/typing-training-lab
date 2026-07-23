@@ -19,7 +19,7 @@ export function RoomView() {
     const canStart = roomPlayers.length >= 2 && allReady;
 
     return (
-        <div className="flex-1 flex flex-col items-center justify-center p-8">
+        <div data-testid="room-view" className="flex-1 flex flex-col items-center justify-center p-8">
             <div className="bg-[var(--keyboard-bg)] p-8 rounded-2xl shadow-2xl border border-[var(--text-secondary)]/10 max-w-2xl w-full">
                 {/* 房間資訊 */}
                 <div className="mb-8">
@@ -93,6 +93,7 @@ export function RoomView() {
                 {/* 操作按鈕 */}
                 <div className="flex gap-4">
                     <button
+                        data-testid="ready-button"
                         onClick={() => setReady(!isReady)}
                         className={clsx(
                             "flex-1 px-6 py-3 rounded-lg font-bold transition-all",

@@ -80,7 +80,7 @@ export function MultiplayerLobby() {
     return (
         <div className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
             {/* 連線狀態 */}
-            <div className="flex items-center gap-2 text-sm">
+            <div data-testid="connection-status" className="flex items-center gap-2 text-sm">
                 {connectionStatus === 'connected' ? (
                     <>
                         <Wifi className="text-green-500" size={16} />
@@ -112,6 +112,7 @@ export function MultiplayerLobby() {
                 <div className="bg-[var(--keyboard-bg)] p-8 rounded-2xl shadow-2xl border border-[var(--text-secondary)]/10 max-w-md w-full">
                     <h2 className="text-2xl font-bold mb-4 text-center">設定玩家名稱</h2>
                     <input
+                        data-testid="player-name-input"
                         type="text"
                         value={localPlayerName}
                         onChange={(e) => setLocalPlayerName(e.target.value)}
@@ -121,6 +122,7 @@ export function MultiplayerLobby() {
                         maxLength={20}
                     />
                     <button
+                        data-testid="confirm-player-name"
                         onClick={handleSetPlayerName}
                         disabled={!localPlayerName.trim()}
                         className="w-full mt-4 px-6 py-3 bg-[var(--accent)] text-[var(--bg-primary)] rounded-lg font-bold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -151,6 +153,7 @@ export function MultiplayerLobby() {
                             </button>
 
                             <button
+                                data-testid="open-create-room"
                                 onClick={() => setIsCreatingRoom(true)}
                                 disabled={connectionStatus !== 'connected'}
                                 className="w-full px-6 py-4 bg-[var(--bg-primary)] border-2 border-[var(--accent)] text-[var(--accent)] rounded-xl font-bold text-lg hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
@@ -189,7 +192,7 @@ export function MultiplayerLobby() {
                             </button>
                         </div>
 
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                        <div data-testid="room-list" className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                             {availableRooms.length === 0 ? (
                                 <p className="text-center text-[var(--text-secondary)] py-8">
                                     目前沒有可用的房間
@@ -226,6 +229,7 @@ export function MultiplayerLobby() {
                     <div className="bg-[var(--keyboard-bg)] p-8 rounded-2xl shadow-2xl border border-[var(--text-secondary)]/10 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
                         <h2 className="text-2xl font-bold mb-4">建立房間</h2>
                         <input
+                            data-testid="room-name-input"
                             type="text"
                             value={newRoomName}
                             onChange={(e) => setNewRoomName(e.target.value)}
@@ -243,6 +247,7 @@ export function MultiplayerLobby() {
                                 取消
                             </button>
                             <button
+                                data-testid="confirm-create-room"
                                 onClick={handleCreateRoom}
                                 disabled={!newRoomName.trim()}
                                 className="flex-1 px-6 py-3 bg-[var(--accent)] text-[var(--bg-primary)] rounded-lg font-bold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"

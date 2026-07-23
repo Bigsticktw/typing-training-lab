@@ -27,6 +27,8 @@ Repository 更名後，請在 Vercel 的 Git 設定確認連結顯示為
 
 ## Render
 
+Repository 內的 [`render.yaml`](./render.yaml) 是可重現的 Blueprint 設定；也可以依照以下內容手動建立 Web Service。
+
 從 repository root 建立 Web Service：
 
 ```text

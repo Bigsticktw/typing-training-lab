@@ -54,6 +54,7 @@ function App() {
             訓練模式
           </button>
           <button
+            data-testid="nav-multiplayer"
             onClick={() => setActiveTab('multiplayer')}
             className={clsx(
               "flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all",

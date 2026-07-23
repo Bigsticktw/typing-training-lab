@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: typing-solo-demo-server
+    runtime: node
+    plan: free
+    buildCommand: npm ci --prefix server && npm run build:server
+    startCommand: npm --prefix server start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: https://typing-solo-demo.vercel.app
