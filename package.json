@@ -1,13 +1,19 @@
 {
-  "name": "typing",
+  "name": "typing-training-lab",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "build:server": "npm --prefix server run build",
+    "lint": "npm run lint:client && npm run lint:server",
+    "lint:client": "eslint src",
+    "lint:server": "eslint server/src",
+    "preview": "vite preview",
+    "test": "vitest run --dir src",
+    "test:server": "npm --prefix server test",
+    "check": "npm run lint && npm test && npm run test:server && npm run build && npm run build:server"
   },
   "dependencies": {
     "@types/recharts": "^1.8.29",
@@ -32,10 +38,12 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "jsdom": "^29.1.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^4.1.10"
   }
 }

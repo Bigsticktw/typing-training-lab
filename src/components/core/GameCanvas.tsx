@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useInputHandler } from '../../hooks/useInputHandler';
@@ -6,6 +6,7 @@ import { getRandomChar } from '../../utils/charGenerator';
 import { VirtualKeyboard } from '../keyboard/VirtualKeyboard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw, AlertTriangle } from 'lucide-react';
+import { calculatePpm } from '../../utils/scoring';
 
 export const GameCanvas = () => {
     useInputHandler();
@@ -23,6 +24,8 @@ export const GameCanvas = () => {
     const [capsLockOn, setCapsLockOn] = useState(false);
     const [upcomingChars, setUpcomingChars] = useState<string[]>([]);
     const [countdown, setCountdown] = useState<number | null>(null);
+    const [currentTime, setCurrentTime] = useState(0);
+    const processedInputCount = useRef(0);
 
     // 語系衝突偵測
 
@@ -42,6 +45,15 @@ export const GameCanvas = () => {
             }, 10);
         }
     }, []);
+
+    const handleStart = useCallback(() => {
+        setCountdown((previous) => previous ?? 3);
+    }, []);
+
+    const handleRestart = useCallback(() => {
+        resetGame();
+        setCountdown((previous) => previous ?? 3);
+    }, [resetGame]);
 
     useEffect(() => {
         const focusInput = (e: MouseEvent) => {
@@ -70,7 +82,7 @@ export const GameCanvas = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [status, countdown]);
+    }, [status, countdown, handleStart, handleRestart]);
 
     // CapsLock & Language Conflict detection
     useEffect(() => {
@@ -89,17 +101,6 @@ export const GameCanvas = () => {
         }
     }, [capsLockOn, gameMode]);
 
-    // Initialize target char
-    useEffect(() => {
-        if (status === 'playing' && !targetChar) {
-            const first = generateChar();
-            const second = generateChar();
-            const third = generateChar();
-            setTargetChar(first);
-            setUpcomingChars([second, third]);
-        }
-    }, [status, targetChar, generateChar, setTargetChar]);
-
     // Timer & End Game Trigger
     useEffect(() => {
         if (status !== 'playing') return;
@@ -110,22 +111,30 @@ export const GameCanvas = () => {
             return;
         }
 
-        const interval = setInterval(tickTimer, 1000);
+        const interval = setInterval(() => {
+            tickTimer();
+            setCurrentTime(Date.now());
+        }, 1000);
         return () => clearInterval(interval);
     }, [status, timeLeft, tickTimer, endGame]);
 
     // Generate new char on correct input
     useEffect(() => {
         if (inputCount > 0 && status === 'playing' && feedback === 'correct') {
-            if (upcomingChars.length >= 2) {
-                setTargetChar(upcomingChars[0]);
-                setUpcomingChars([upcomingChars[1], generateChar()]);
-            } else {
-                setTargetChar(generateChar());
-                setUpcomingChars([generateChar(), generateChar()]);
-            }
+            if (processedInputCount.current >= inputCount) return;
+            processedInputCount.current = inputCount;
+            const timer = setTimeout(() => {
+                if (upcomingChars.length >= 2) {
+                    setTargetChar(upcomingChars[0]);
+                    setUpcomingChars([upcomingChars[1], generateChar()]);
+                } else {
+                    setTargetChar(generateChar());
+                    setUpcomingChars([generateChar(), generateChar()]);
+                }
+            }, 0);
+            return () => clearTimeout(timer);
         }
-    }, [inputCount, status, feedback]); // 注意：這裡不加 upcomingChars 作為依賴，避免遞迴
+    }, [inputCount, status, feedback, upcomingChars, generateChar, setTargetChar]);
 
     const startActualGame = useCallback(() => {
         startGame();
@@ -134,44 +143,41 @@ export const GameCanvas = () => {
         const third = generateChar();
         setTargetChar(first);
         setUpcomingChars([second, third]);
+        processedInputCount.current = 0;
+        setCurrentTime(Date.now());
     }, [startGame, generateChar, setTargetChar]);
-
-    const handleStart = useCallback(() => {
-        setCountdown(prev => prev !== null ? prev : 3);
-    }, []);
-
-    const handleRestart = useCallback(() => {
-        resetGame();
-        setCountdown(prev => prev !== null ? prev : 3);
-    }, [resetGame]);
 
     useEffect(() => {
         if (countdown === null) return;
         if (countdown > 0) {
             const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
             return () => clearTimeout(timer);
-        } else {
+        }
+        const timer = setTimeout(() => {
             setCountdown(null);
             startActualGame();
-        }
+        }, 0);
+        return () => clearTimeout(timer);
     }, [countdown, startActualGame]);
 
     // Handle restart from ResultScreen
     useEffect(() => {
         if (wantsRestart && status === 'idle' && countdown === null) {
-            setWantsRestart(false);
-            handleStart();
+            const timer = setTimeout(() => {
+                setWantsRestart(false);
+                handleStart();
+            }, 0);
+            return () => clearTimeout(timer);
         }
     }, [wantsRestart, status, countdown, setWantsRestart, handleStart]);
 
     const accuracy = totalKeystrokes > 0 ? Math.round((score / totalKeystrokes) * 100) : 100;
     const displayTime = timeLeft === Infinity ? '∞' : timeLeft;
 
-    const ppm = useMemo(() => {
-        if (status !== 'playing' || startTime === 0) return 0;
-        const elapsedMinutes = (Date.now() - startTime) / 60000;
-        return elapsedMinutes > 0 ? Math.round(score / elapsedMinutes) : 0;
-    }, [status, startTime, score, inputCount]);
+    const ppm =
+        status === 'playing' && startTime > 0
+            ? calculatePpm(score, startTime, currentTime)
+            : 0;
 
     return (
         <div className="flex flex-col items-center justify-center w-full h-full min-h-[500px] relative">

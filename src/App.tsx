@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { GameCanvas } from './components/core/GameCanvas';
 import { ResultScreen } from './components/overlays/ResultScreen';
 import { SettingsPanel } from './components/overlays/SettingsPanel';
-import { Dashboard } from './components/stats/Dashboard';
 import { MultiplayerLobby } from './components/multiplayer/MultiplayerLobby';
 import { RoomView } from './components/multiplayer/RoomView';
 import { MultiplayerGameCanvas } from './components/multiplayer/MultiplayerGameCanvas';
@@ -14,30 +13,26 @@ import { LayoutDashboard, Keyboard, Users } from 'lucide-react';
 import clsx from 'clsx';
 import { SoundManager } from './components/core/SoundManager';
 
+const Dashboard = lazy(() =>
+  import('./components/stats/Dashboard').then((module) => ({ default: module.Dashboard })),
+);
+
 function App() {
   const { status } = useGameStore();
   const { theme } = useSettingsStore();
   const { status: multiplayerStatus } = useMultiplayerStore();
   const [activeTab, setActiveTab] = useState<'game' | 'multiplayer' | 'stats'>('game');
+  const visibleTab =
+    status === 'playing'
+      ? 'game'
+      : multiplayerStatus === 'playing'
+        ? 'multiplayer'
+        : activeTab;
 
   // Set theme attribute on body
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
-
-  // 如果遊戲開始，自動切換回 game 標籤
-  useEffect(() => {
-    if (status === 'playing') {
-      setActiveTab('game');
-    }
-  }, [status]);
-
-  // 如果多人遊戲開始，自動切換到 multiplayer 標籤
-  useEffect(() => {
-    if (multiplayerStatus === 'playing') {
-      setActiveTab('multiplayer');
-    }
-  }, [multiplayerStatus]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-300 font-inter selection:bg-[var(--accent)] selection:text-[var(--bg-primary)] flex flex-col">
@@ -50,7 +45,7 @@ function App() {
             onClick={() => setActiveTab('game')}
             className={clsx(
               "flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all",
-              activeTab === 'game'
+              visibleTab === 'game'
                 ? "bg-[var(--accent)] text-[var(--bg-primary)] shadow-[0_0_15px_var(--accent)]"
                 : "opacity-50 hover:opacity-100"
             )}
@@ -62,7 +57,7 @@ function App() {
             onClick={() => setActiveTab('multiplayer')}
             className={clsx(
               "flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all",
-              activeTab === 'multiplayer'
+              visibleTab === 'multiplayer'
                 ? "bg-[var(--accent)] text-[var(--bg-primary)] shadow-[0_0_15px_var(--accent)]"
                 : "opacity-50 hover:opacity-100"
             )}
@@ -74,7 +69,7 @@ function App() {
             onClick={() => setActiveTab('stats')}
             className={clsx(
               "flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition-all",
-              activeTab === 'stats'
+              visibleTab === 'stats'
                 ? "bg-[var(--accent)] text-[var(--bg-primary)] shadow-[0_0_15px_var(--accent)]"
                 : "opacity-50 hover:opacity-100"
             )}
@@ -86,7 +81,7 @@ function App() {
       </nav>
 
       <main className="flex-1 flex flex-col container mx-auto px-4 relative">
-        {activeTab === 'game' ? (
+        {visibleTab === 'game' ? (
           <>
             {status !== 'finished' ? (
               <>
@@ -97,7 +92,7 @@ function App() {
               <ResultScreen />
             )}
           </>
-        ) : activeTab === 'multiplayer' ? (
+        ) : visibleTab === 'multiplayer' ? (
           <>
             {multiplayerStatus === 'lobby' && <MultiplayerLobby />}
             {multiplayerStatus === 'in-room' && <RoomView />}
@@ -105,13 +100,15 @@ function App() {
             {multiplayerStatus === 'finished' && <MultiplayerResultScreen />}
           </>
         ) : (
-          <Dashboard />
+          <Suspense fallback={<div className="py-20 text-center opacity-60">載入統計資料…</div>}>
+            <Dashboard />
+          </Suspense>
         )}
       </main>
 
       {/* Footer */}
       <footer className="p-6 text-center text-xs opacity-20 font-mono tracking-widest uppercase">
-        Typing Muscle Memory v1.0 • Built for Mastery
+        Typing Training Lab • Built for deliberate practice
       </footer>
     </div>
   );

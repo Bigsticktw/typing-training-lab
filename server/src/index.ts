@@ -1,336 +1,280 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { createServer } from 'node:http';
 import cors from 'cors';
-import type {
-    ServerToClientEvents,
-    ClientToServerEvents,
-    InterServerEvents,
-    SocketData,
-    Player,
-    GameUpdate
-} from './types.js';
+import { Server, type Socket } from 'socket.io';
 import { RoomManager } from './RoomManager.js';
+import { SocketRateLimiter } from './rateLimiter.js';
+import {
+    validateCreateRoom,
+    validateGameInput,
+    validateJoinRoom,
+    validateQuickMatch,
+} from './validation.js';
+import type {
+    ClientToServerEvents,
+    GameUpdate,
+    InterServerEvents,
+    Player,
+    Room,
+    ServerToClientEvents,
+    SocketData,
+} from './types.js';
+
+type AppSocket = Socket<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    InterServerEvents,
+    SocketData
+>;
+type NewPlayer = Omit<Player, 'score' | 'errors' | 'currentIndex' | 'isReady'>;
+
+const DEFAULT_ORIGINS = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://typing-solo-demo.vercel.app',
+];
+const allowedOrigins = new Set(
+    (process.env.ALLOWED_ORIGINS?.split(',') ?? DEFAULT_ORIGINS)
+        .map(origin => origin.trim())
+        .filter(Boolean),
+);
+const isOriginAllowed = (origin?: string): boolean => !origin || allowedOrigins.has(origin);
 
 const app = express();
-app.use(cors());
+app.disable('x-powered-by');
+app.use(cors({
+    origin: (origin, callback) => {
+        callback(isOriginAllowed(origin) ? null : new Error('Not allowed by CORS'), isOriginAllowed(origin));
+    },
+    methods: ['GET'],
+}));
 
 const httpServer = createServer(app);
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : [
-        'http://localhost:5173',
-        'http://localhost:3000',
-        'https://*.vercel.app',
-    ];
-
-const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(httpServer, {
+const io = new Server<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    InterServerEvents,
+    SocketData
+>(httpServer, {
     cors: {
         origin: (origin, callback) => {
-            // 允許沒有 origin 的請求（例如移動端應用）
-            if (!origin) return callback(null, true);
-
-            // 檢查是否在允許列表中或匹配 vercel.app 域名
-            if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
-                callback(null, true);
-            } else {
-                callback(new Error('Not allowed by CORS'));
-            }
+            callback(isOriginAllowed(origin) ? null : new Error('Not allowed by CORS'), isOriginAllowed(origin));
         },
         methods: ['GET', 'POST'],
-        credentials: true
-    }
+    },
+    maxHttpBufferSize: 10_000,
 });
 
-const roomManager = new RoomManager();
-const PORT = parseInt(process.env.PORT || '10000', 10);
+const roomManager = new RoomManager(100);
+const rateLimiter = new SocketRateLimiter();
+const socketToPlayer = new Map<string, { playerId: string; roomId: string }>();
+const PORT = Number.parseInt(process.env.PORT ?? '10000', 10);
 
-// 玩家 Socket ID 到玩家 ID 的映射
-const socketToPlayer = new Map<string, { playerId: string; roomId?: string }>();
+const createPlayer = (socket: AppSocket, name: string): NewPlayer => ({
+    id: `player_${randomUUID()}`,
+    socketId: socket.id,
+    name,
+    isConnected: true,
+});
 
-io.on('connection', (socket) => {
-    console.log(`[Socket] Client connected: ${socket.id}`);
+const toJoinedPayload = (room: Room) => ({
+    room: {
+        id: room.id,
+        name: room.name,
+        playerCount: room.players.size,
+        maxPlayers: room.maxPlayers,
+        status: room.status,
+        gameConfig: room.gameConfig,
+    },
+    players: Array.from(room.players.values()),
+});
 
-    // 房間建立
-    socket.on('room:create', ({ name, config, playerName }) => {
+const requireRateLimit = (
+    socket: AppSocket,
+    event: string,
+    limit: number,
+    windowMs: number,
+): boolean => {
+    if (rateLimiter.consume(socket.id, event, limit, windowMs)) return true;
+    socket.emit('error', '操作過於頻繁，請稍後再試');
+    return false;
+};
+
+const ensureNotInRoom = (socket: AppSocket): boolean => {
+    if (!socketToPlayer.has(socket.id)) return true;
+    socket.emit('error', '請先離開目前房間');
+    return false;
+};
+
+const joinSocketToRoom = (socket: AppSocket, room: Room, playerId: string): void => {
+    socket.join(room.id);
+    socketToPlayer.set(socket.id, { playerId, roomId: room.id });
+    socket.data.playerId = playerId;
+    socket.data.roomId = room.id;
+    socket.emit('room:joined', toJoinedPayload(room));
+};
+
+const leaveCurrentRoom = (socket: AppSocket, notifySocket: boolean): void => {
+    const playerData = socketToPlayer.get(socket.id);
+    if (!playerData) return;
+
+    const { playerId, roomId } = playerData;
+    socket.leave(roomId);
+    roomManager.leaveRoom(roomId, playerId);
+    socketToPlayer.delete(socket.id);
+    socket.data.playerId = undefined;
+    socket.data.roomId = undefined;
+    socket.to(roomId).emit('player:left', playerId);
+    io.emit('room:list', roomManager.getRoomList());
+    if (notifySocket) socket.emit('room:left');
+};
+
+io.on('connection', socket => {
+    console.log(`[Socket] connected: ${socket.id}`);
+
+    socket.on('room:create', payload => {
+        if (!requireRateLimit(socket, 'room:create', 10, 60_000) || !ensureNotInRoom(socket)) return;
         try {
-            const playerId = generatePlayerId();
-            const player: Omit<Player, 'score' | 'errors' | 'currentIndex' | 'isReady'> = {
-                id: playerId,
-                socketId: socket.id,
-                name: playerName,
-                isConnected: true,
-            };
-
+            const { name, config, playerName } = validateCreateRoom(payload);
+            const player = createPlayer(socket, playerName);
             const room = roomManager.createRoom(name, config, player);
-
-            socket.join(room.id);
-            socketToPlayer.set(socket.id, { playerId, roomId: room.id });
-            socket.data.playerId = playerId;
-            socket.data.roomId = room.id;
-
-            // 通知建立者
-            socket.emit('room:joined', {
-                room: {
-                    id: room.id,
-                    name: room.name,
-                    playerCount: room.players.size,
-                    maxPlayers: room.maxPlayers,
-                    status: room.status,
-                    gameConfig: room.gameConfig,
-                },
-                players: Array.from(room.players.values()),
-            });
-
-            // 廣播房間列表更新
+            joinSocketToRoom(socket, room, player.id);
             io.emit('room:list', roomManager.getRoomList());
-
-            console.log(`[Room] Created: ${room.id} by ${playerName}`);
         } catch (error) {
             socket.emit('error', error instanceof Error ? error.message : '建立房間失敗');
         }
     });
 
-    // 加入房間
-    socket.on('room:join', ({ roomId, playerName }) => {
+    socket.on('room:join', payload => {
+        if (!requireRateLimit(socket, 'room:join', 10, 60_000) || !ensureNotInRoom(socket)) return;
         try {
-            const playerId = generatePlayerId();
-            const player: Omit<Player, 'score' | 'errors' | 'currentIndex' | 'isReady'> = {
-                id: playerId,
-                socketId: socket.id,
-                name: playerName,
-                isConnected: true,
-            };
-
+            const { roomId, playerName } = validateJoinRoom(payload);
+            const player = createPlayer(socket, playerName);
             const room = roomManager.joinRoom(roomId, player);
             if (!room) {
-                socket.emit('error', '房間不存在');
+                socket.emit('error', '找不到房間');
                 return;
             }
 
-            socket.join(roomId);
-            socketToPlayer.set(socket.id, { playerId, roomId });
-            socket.data.playerId = playerId;
-            socket.data.roomId = roomId;
-
-            // 通知加入者
-            socket.emit('room:joined', {
-                room: {
-                    id: room.id,
-                    name: room.name,
-                    playerCount: room.players.size,
-                    maxPlayers: room.maxPlayers,
-                    status: room.status,
-                    gameConfig: room.gameConfig,
-                },
-                players: Array.from(room.players.values()),
-            });
-
-            // 通知房間內其他玩家
-            const newPlayer = room.players.get(playerId)!;
-            socket.to(roomId).emit('player:joined', newPlayer);
-
-            // 廣播房間列表更新
+            joinSocketToRoom(socket, room, player.id);
+            socket.to(room.id).emit('player:joined', room.players.get(player.id)!);
             io.emit('room:list', roomManager.getRoomList());
-
-            console.log(`[Room] ${playerName} joined room ${roomId}`);
         } catch (error) {
             socket.emit('error', error instanceof Error ? error.message : '加入房間失敗');
         }
     });
 
-    // 離開房間
-    socket.on('room:leave', () => {
-        const playerData = socketToPlayer.get(socket.id);
-        if (!playerData || !playerData.roomId) return;
-
-        const { playerId, roomId } = playerData;
-
-        socket.leave(roomId);
-        roomManager.leaveRoom(roomId, playerId);
-        socketToPlayer.delete(socket.id);
-
-        // 通知房間內其他玩家
-        socket.to(roomId).emit('player:left', playerId);
-
-        // 廣播房間列表更新
-        io.emit('room:list', roomManager.getRoomList());
-
-        socket.emit('room:left');
-        console.log(`[Room] Player ${playerId} left room ${roomId}`);
-    });
-
-    // 取得房間列表
-    socket.on('room:list', () => {
-        socket.emit('room:list', roomManager.getRoomList());
-    });
-
-    // 快速配對
-    socket.on('room:quickMatch', ({ config, playerName }) => {
+    socket.on('room:quickMatch', payload => {
+        if (!requireRateLimit(socket, 'room:quickMatch', 10, 60_000) || !ensureNotInRoom(socket)) return;
         try {
-            const playerId = generatePlayerId();
-            const player: Omit<Player, 'score' | 'errors' | 'currentIndex' | 'isReady'> = {
-                id: playerId,
-                socketId: socket.id,
-                name: playerName,
-                isConnected: true,
-            };
-
+            const { config, playerName } = validateQuickMatch(payload);
+            const player = createPlayer(socket, playerName);
             const room = roomManager.quickMatch(config, player);
-
-            socket.join(room.id);
-            socketToPlayer.set(socket.id, { playerId, roomId: room.id });
-            socket.data.playerId = playerId;
-            socket.data.roomId = room.id;
-
-            // 通知加入者
-            socket.emit('room:joined', {
-                room: {
-                    id: room.id,
-                    name: room.name,
-                    playerCount: room.players.size,
-                    maxPlayers: room.maxPlayers,
-                    status: room.status,
-                    gameConfig: room.gameConfig,
-                },
-                players: Array.from(room.players.values()),
-            });
-
-            // 如果不是房主（房間已存在），通知其他玩家
+            joinSocketToRoom(socket, room, player.id);
             if (room.players.size > 1) {
-                const newPlayer = room.players.get(playerId)!;
-                socket.to(room.id).emit('player:joined', newPlayer);
+                socket.to(room.id).emit('player:joined', room.players.get(player.id)!);
             }
-
-            // 廣播房間列表更新
             io.emit('room:list', roomManager.getRoomList());
-
-            console.log(`[QuickMatch] ${playerName} matched to room ${room.id}`);
         } catch (error) {
             socket.emit('error', error instanceof Error ? error.message : '快速配對失敗');
         }
     });
 
-    // 玩家準備
-    socket.on('player:ready', (isReady) => {
+    socket.on('room:leave', () => {
+        if (!requireRateLimit(socket, 'room:leave', 10, 10_000)) return;
+        leaveCurrentRoom(socket, true);
+    });
+
+    socket.on('room:list', () => {
+        if (!requireRateLimit(socket, 'room:list', 30, 60_000)) return;
+        socket.emit('room:list', roomManager.getRoomList());
+    });
+
+    socket.on('player:ready', isReady => {
+        if (!requireRateLimit(socket, 'player:ready', 20, 60_000)) return;
+        if (typeof isReady !== 'boolean') {
+            socket.emit('error', '準備狀態格式錯誤');
+            return;
+        }
+
         const playerData = socketToPlayer.get(socket.id);
-        if (!playerData || !playerData.roomId) return;
-
+        if (!playerData) return;
         const { playerId, roomId } = playerData;
+        if (!roomManager.setPlayerReady(roomId, playerId, isReady)) return;
 
-        roomManager.setPlayerReady(roomId, playerId, isReady);
-
-        // 廣播給房間內所有人
         io.to(roomId).emit('player:ready', playerId, isReady);
-
-        // 如果所有人都準備好了，開始遊戲
-        if (isReady && roomManager.isAllPlayersReady(roomId)) {
-            startGame(roomId);
-        }
+        if (isReady && roomManager.isAllPlayersReady(roomId)) startGame(roomId);
     });
 
-    // 玩家輸入
-    socket.on('game:input', ({ char, isCorrect }) => {
+    socket.on('game:input', payload => {
+        if (!requireRateLimit(socket, 'game:input', 40, 1_000)) return;
         const playerData = socketToPlayer.get(socket.id);
-        if (!playerData || !playerData.roomId) return;
+        if (!playerData) return;
 
-        const { playerId, roomId } = playerData;
-        const room = roomManager.getRoom(roomId);
-
-        if (!room || room.status !== 'playing') return;
-
-        // 更新玩家進度
-        roomManager.updatePlayerProgress(roomId, playerId, isCorrect);
-
-        // 廣播遊戲狀態更新
-        const updates: GameUpdate[] = Array.from(room.players.values()).map(p => ({
-            playerId: p.id,
-            score: p.score,
-            errors: p.errors,
-            currentIndex: p.currentIndex,
-        }));
-
-        io.to(roomId).emit('game:update', updates);
-    });
-
-    // 斷線處理
-    socket.on('disconnect', () => {
-        const playerData = socketToPlayer.get(socket.id);
-        if (playerData && playerData.roomId) {
+        try {
+            const { char } = validateGameInput(payload);
             const { playerId, roomId } = playerData;
+            const result = roomManager.updatePlayerProgress(roomId, playerId, char);
+            if (!result.accepted) return;
 
-            roomManager.setPlayerConnection(roomId, playerId, false);
-            socket.to(roomId).emit('player:disconnected', playerId);
-
-            // 延遲刪除玩家（給予重連機會）
-            setTimeout(() => {
-                const stillDisconnected = socketToPlayer.get(socket.id);
-                if (stillDisconnected) {
-                    roomManager.leaveRoom(roomId, playerId);
-                    socket.to(roomId).emit('player:left', playerId);
-                    socketToPlayer.delete(socket.id);
-                    io.emit('room:list', roomManager.getRoomList());
-                }
-            }, 30000); // 30 秒後移除
+            const room = roomManager.getRoom(roomId);
+            if (!room) return;
+            const updates: GameUpdate[] = Array.from(room.players.values()).map(player => ({
+                playerId: player.id,
+                score: player.score,
+                errors: player.errors,
+                currentIndex: player.currentIndex,
+            }));
+            io.to(roomId).emit('game:update', updates);
+        } catch (error) {
+            socket.emit('error', error instanceof Error ? error.message : '輸入格式錯誤');
         }
+    });
 
-        console.log(`[Socket] Client disconnected: ${socket.id}`);
+    socket.on('disconnect', () => {
+        leaveCurrentRoom(socket, false);
+        rateLimiter.clear(socket.id);
+        console.log(`[Socket] disconnected: ${socket.id}`);
     });
 });
 
-/**
- * 開始遊戲
- */
-function startGame(roomId: string) {
+const startGame = (roomId: string): void => {
+    if (!roomManager.startGame(roomId)) return;
     const room = roomManager.getRoom(roomId);
-    if (!room) return;
+    if (!room?.startTime) return;
 
-    roomManager.startGame(roomId);
-
-    // 廣播遊戲開始
     io.to(roomId).emit('game:start', {
         charSequence: room.charSequence,
-        startTime: room.startTime!,
+        startTime: room.startTime,
     });
 
-    console.log(`[Game] Started in room ${roomId}`);
+    setTimeout(() => endGame(roomId), room.gameConfig.duration * 1_000).unref();
+};
 
-    // 設定遊戲結束計時器
-    setTimeout(() => {
-        endGame(roomId);
-    }, room.gameConfig.duration * 1000);
-}
-
-/**
- * 結束遊戲
- */
-function endGame(roomId: string) {
+const endGame = (roomId: string): void => {
     const room = roomManager.getRoom(roomId);
     if (!room || room.status !== 'playing') return;
 
     roomManager.endGame(roomId);
-
-    // 廣播遊戲結束
     io.to(roomId).emit('game:end', {
         players: Array.from(room.players.values()),
         duration: room.gameConfig.duration,
     });
+};
 
-    console.log(`[Game] Ended in room ${roomId}`);
-}
+setInterval(() => {
+    const removed = roomManager.pruneStaleRooms();
+    if (removed > 0) io.emit('room:list', roomManager.getRoomList());
+}, 60_000).unref();
 
-/**
- * 生成隨機玩家 ID
- */
-function generatePlayerId(): string {
-    return `player_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-}
-
-// 簡單的健康檢查端點
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', rooms: roomManager.getRoomList().length });
+app.get('/health', (_request, response) => {
+    response.json({
+        status: 'ok',
+        waitingRooms: roomManager.getRoomList().length,
+    });
 });
 
 httpServer.listen(PORT, () => {
-    console.log(`[Server] Running on port ${PORT}`);
+    console.log(`[Server] running on port ${PORT}`);
 });

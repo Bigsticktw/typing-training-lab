@@ -15,7 +15,10 @@ export const SoundManager = () => {
         // Browsers block AudioContext until user gesture. 
         // We assume interaction happened (Start Game button).
         if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const AudioContextConstructor = window.AudioContext ?? window.webkitAudioContext;
+            if (AudioContextConstructor) {
+                audioCtxRef.current = new AudioContextConstructor();
+            }
         }
     }, [status]); // Try init on status change (e.g. playing)
 

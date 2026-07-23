@@ -9,7 +9,9 @@ import { VirtualKeyboard } from '../keyboard/VirtualKeyboard';
 // 音效播放
 const playSound = (type: 'correct' | 'wrong') => {
     try {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContextConstructor = window.AudioContext ?? window.webkitAudioContext;
+        if (!AudioContextConstructor) return;
+        const audioContext = new AudioContextConstructor();
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
 
@@ -31,7 +33,7 @@ const playSound = (type: 'correct' | 'wrong') => {
             oscillator.start(audioContext.currentTime);
             oscillator.stop(audioContext.currentTime + 0.15);
         }
-    } catch (e) {
+    } catch {
         // 音效播放失敗時靜默處理
     }
 };
@@ -132,7 +134,7 @@ export function MultiplayerGameCanvas() {
                 isCorrect = inputKey === currentChar;
             }
 
-            sendInput(inputKey, isCorrect);
+            sendInput(inputKey);
 
             // 播放音效
             if (soundEnabled) {

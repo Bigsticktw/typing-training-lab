@@ -44,8 +44,7 @@ interface MultiplayerState {
     setReady: (isReady: boolean) => void;
 
     // 遊戲操作
-    sendInput: (char: string, isCorrect: boolean) => void;
-    nextChar: () => void;
+    sendInput: (char: string) => void;
 
     // 內部狀態更新
     setConnectionStatus: (status: ConnectionStatus) => void;
@@ -157,7 +156,14 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
                     currentIndex: update.currentIndex,
                 });
             });
-            set({ playerStats: newStats });
+            const state = get();
+            const ownUpdate = state.playerId
+                ? updates.find(update => update.playerId === state.playerId)
+                : undefined;
+            set({
+                playerStats: newStats,
+                currentCharIndex: ownUpdate?.currentIndex ?? state.currentCharIndex,
+            });
         });
 
         socketService.onGameEnd(({ players }) => {
@@ -223,17 +229,8 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
         socketService.setReady(isReady);
     },
 
-    sendInput: (char, isCorrect) => {
-        socketService.sendInput(char, isCorrect);
-        if (isCorrect) {
-            get().nextChar();
-        }
-    },
-
-    nextChar: () => {
-        set((state) => ({
-            currentCharIndex: state.currentCharIndex + 1,
-        }));
+    sendInput: (char) => {
+        socketService.sendInput(char);
     },
 
     setConnectionStatus: (status) => {
