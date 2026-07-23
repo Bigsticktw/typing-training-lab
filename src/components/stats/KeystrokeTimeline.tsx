@@ -15,10 +15,8 @@ interface Props {
 export const KeystrokeTimeline = ({ keystrokeTimings, startTime, gameMode }: Props) => {
 
     // 向後相容:舊資料可能沒有 keystrokeTimings
-    const safeTimings = keystrokeTimings || [];
-
     const chartData = useMemo(() => {
-        return safeTimings.map(timing => {
+        return keystrokeTimings.map(timing => {
             // 優先使用儲存的字符（新資料），向後相容舊資料
             const display = timing.targetChar || (
                 gameMode === 'English'
@@ -46,7 +44,7 @@ export const KeystrokeTimeline = ({ keystrokeTimings, startTime, gameMode }: Pro
                 pressedKey: displayPressedKey
             };
         });
-    }, [safeTimings, startTime, gameMode]);
+    }, [keystrokeTimings, startTime, gameMode]);
 
     if (chartData.length === 0) {
         return (

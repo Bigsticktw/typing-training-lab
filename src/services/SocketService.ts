@@ -103,8 +103,8 @@ export class SocketService {
 
     // ===== 遊戲相關 =====
 
-    sendInput(char: string, isCorrect: boolean): void {
-        this.socket?.emit('game:input', { char, isCorrect });
+    sendInput(char: string): void {
+        this.socket?.emit('game:input', { char });
     }
 
     // ===== 事件監聽註冊 =====
@@ -151,9 +151,6 @@ export class SocketService {
 
     // ===== 移除事件監聽 =====
 
-    off(event: keyof ServerToClientEvents, callback?: any): void {
-        this.socket?.off(event, callback);
-    }
 }
 
 // 單例模式

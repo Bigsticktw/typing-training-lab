@@ -89,7 +89,7 @@ export interface ClientToServerEvents {
     'player:setName': (name: string) => void;
 
     // 遊戲相關
-    'game:input': (data: { char: string; isCorrect: boolean }) => void;
+    'game:input': (data: { char: string }) => void;
 }
 
 export interface InterServerEvents {

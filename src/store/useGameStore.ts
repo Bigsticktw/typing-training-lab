@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useSettingsStore, type GameMode } from './useSettingsStore';
+import {
+    calculateAccuracy,
+    calculateAverageLatency,
+    calculatePpm,
+} from '../utils/scoring';
 
 export type GameStatus = 'idle' | 'playing' | 'finished';
 type Feedback = 'idle' | 'correct' | 'wrong';
@@ -127,14 +132,9 @@ export const useGameStore = create<GameState>()(
 
                 // 計算當局數據
                 const elapsedMs = Date.now() - state.startTime;
-                const elapsedMinutes = elapsedMs / 60000;
-                const ppm = elapsedMinutes > 0 ? Math.round(state.score / elapsedMinutes) : 0;
-                const accuracy = state.totalKeystrokes > 0 ? Math.round((state.score / state.totalKeystrokes) * 100) : 0;
-
-                const allLatencies = Object.values(state.keyLatencies).flat();
-                const avgLatency = allLatencies.length > 0
-                    ? Math.round(allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length)
-                    : 0;
+                const ppm = calculatePpm(state.score, state.startTime, Date.now());
+                const accuracy = calculateAccuracy(state.score, state.totalKeystrokes);
+                const avgLatency = calculateAverageLatency(state.keyLatencies);
 
                 const timeMode = useSettingsStore.getState().timeMode;
                 const configuredDuration = timeMode === 'infinite' ? Math.round(elapsedMs / 1000) : (typeof timeMode === 'number' ? timeMode : 60);

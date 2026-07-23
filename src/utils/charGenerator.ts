@@ -55,7 +55,7 @@ export const getRandomChar = (
         const totalWeight = weights.reduce((sum, w) => sum + w, 0);
 
         // 輪盤賭算法（Roulette Wheel Selection）
-        let random = Math.random() * totalWeight;
+        const random = Math.random() * totalWeight;
         let cumulativeWeight = 0;
 
         for (let i = 0; i < availableKeys.length; i++) {

@@ -3,32 +3,22 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { motion } from 'framer-motion';
 import { RotateCcw, Home, Target } from 'lucide-react';
 import { KEYBOARD_LAYOUT } from '../../utils/layoutMaps';
-import { useMemo, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { calculateAccuracy, calculateAverageLatency } from '../../utils/scoring';
 
 export const ResultScreen = () => {
     const {
-        score, errors, totalKeystrokes, startTime,
+        score, errors, totalKeystrokes, gameHistory,
         resetGame,
         keyLatencies, keyErrors
     } = useGameStore();
 
     const { setSelectedKeys, gameMode } = useSettingsStore();
 
-    const accuracy = totalKeystrokes > 0
-        ? Math.round((score / totalKeystrokes) * 100)
-        : 0;
-
-    // Calculate PPM
-    const elapsedMs = Date.now() - startTime;
-    const elapsedMinutes = elapsedMs / 60000;
-    const ppm = elapsedMinutes > 0 ? Math.round(score / elapsedMinutes) : 0;
-
-    // Calculate average latency
-    const avgLatency = useMemo(() => {
-        const allLatencies = Object.values(keyLatencies).flat();
-        if (allLatencies.length === 0) return 0;
-        return Math.round(allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length);
-    }, [keyLatencies]);
+    const latestSession = gameHistory[0];
+    const accuracy = latestSession?.accuracy ?? calculateAccuracy(score, totalKeystrokes);
+    const ppm = latestSession?.ppm ?? 0;
+    const avgLatency = latestSession?.avgLatency ?? calculateAverageLatency(keyLatencies);
 
     // Find weakest keys (slowest + most errors)
     const weakestKeys = useMemo(() => {
@@ -88,10 +78,10 @@ export const ResultScreen = () => {
         return { avgLat, errorCount, attempts: latencies.length, errorRate };
     };
 
-    const handleRestart = () => {
+    const handleRestart = useCallback(() => {
         resetGame();
         useGameStore.getState().setWantsRestart(true);
-    };
+    }, [resetGame]);
 
     // Enter 觸發再來一次
     useEffect(() => {
@@ -102,7 +92,7 @@ export const ResultScreen = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []); // remove handleRestart from dep array as it is not a useCallback. Actually, we can omit deps since it's just event listener. No, better to leave empty.
+    }, [handleRestart]);
 
     const handleWeakKeyTraining = () => {
         if (weakestKeys.length > 0) {

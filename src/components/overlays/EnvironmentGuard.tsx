@@ -12,10 +12,7 @@ export const EnvironmentGuard = () => {
 
     useEffect(() => {
         // 只在遊戲進行中檢測
-        if (status !== 'playing') {
-            setShowWarning(false);
-            return;
-        }
+        if (status !== 'playing') return;
 
         // 簡單的輸入法檢測邏輯
         // 監聽 compositionstart 事件來檢測 IME 輸入
@@ -25,11 +22,6 @@ export const EnvironmentGuard = () => {
                 setDetectedLanguage('中文輸入法');
                 setShowWarning(true);
             }
-        };
-
-        const handleCompositionEnd = () => {
-            // compositionend 時清除警告(可選)
-            // setShowWarning(false);
         };
 
         // 監聽按鍵來檢測非 ASCII 字符
@@ -43,26 +35,24 @@ export const EnvironmentGuard = () => {
             }
 
             // 如果是英文模式但檢測到中文字符
-            if (gameMode === 'English' && !e.key.match(/^[\x00-\x7F]$/)) {
+            if (gameMode === 'English' && e.key.length === 1 && e.key.charCodeAt(0) > 127) {
                 setDetectedLanguage('非英文輸入');
                 setShowWarning(true);
             }
         };
 
         document.addEventListener('compositionstart', handleCompositionStart);
-        document.addEventListener('compositionend', handleCompositionEnd);
         document.addEventListener('keypress', handleKeyPress);
 
         return () => {
             document.removeEventListener('compositionstart', handleCompositionStart);
-            document.removeEventListener('compositionend', handleCompositionEnd);
             document.removeEventListener('keypress', handleKeyPress);
         };
     }, [gameMode, status]);
 
     return (
         <AnimatePresence>
-            {showWarning && (
+            {status === 'playing' && showWarning && (
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}

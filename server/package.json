@@ -1,22 +1,24 @@
 {
-    "name": "typing-battle-server",
+    "name": "typing-training-lab-server",
     "version": "1.0.0",
     "type": "module",
     "scripts": {
         "dev": "tsx watch src/index.ts",
         "build": "tsc",
-        "start": "tsx src/index.ts"
+        "start": "tsx src/index.ts",
+        "test": "vitest run --dir src"
     },
     "dependencies": {
-        "socket.io": "^4.7.0",
-        "express": "^4.19.0",
         "cors": "^2.8.5",
+        "express": "^4.19.0",
+        "socket.io": "^4.7.0",
         "tsx": "^4.7.0"
     },
     "devDependencies": {
-        "@types/express": "^4.17.21",
         "@types/cors": "^2.8.17",
+        "@types/express": "^4.17.21",
         "@types/node": "^20.11.0",
-        "typescript": "^5.3.3"
+        "typescript": "^5.3.3",
+        "vitest": "^4.1.10"
     }
 }
