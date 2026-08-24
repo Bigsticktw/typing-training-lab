@@ -12,6 +12,7 @@ import { useMultiplayerStore } from './store/useMultiplayerStore';
 import { LayoutDashboard, Keyboard, Users } from 'lucide-react';
 import clsx from 'clsx';
 import { SoundManager } from './components/core/SoundManager';
+import { syncPendingSheetsSessions } from './services/GoogleSheetsSync';
 
 const Dashboard = lazy(() =>
   import('./components/stats/Dashboard').then((module) => ({ default: module.Dashboard })),
@@ -33,6 +34,14 @@ function App() {
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Retry locally queued sessions when the app opens or the browser reconnects.
+  useEffect(() => {
+    void syncPendingSheetsSessions();
+    const handleOnline = () => void syncPendingSheetsSessions();
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] transition-colors duration-300 font-inter selection:bg-[var(--accent)] selection:text-[var(--bg-primary)] flex flex-col">

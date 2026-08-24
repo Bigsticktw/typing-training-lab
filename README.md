@@ -169,3 +169,9 @@ GitHub Actions runs client/server lint, tests, builds, the two-player Playwright
 ### License
 
 This project is available under the [MIT License](./LICENSE).
+
+### Optional Google Sheets sync
+
+Solo-session results can optionally be appended to Google Sheets through the included Google Apps Script receiver. Local history remains authoritative and available when the endpoint is absent or offline; uploads use an idempotent local queue with automatic and manual retry.
+
+Copy `.env.example` to `.env.local`, set `VITE_GOOGLE_SHEETS_WEB_APP_URL`, and follow the schema and deployment guide in [`google-apps-script/README.md`](./google-apps-script/README.md). Do not commit spreadsheet ids, credentials, or private data.
