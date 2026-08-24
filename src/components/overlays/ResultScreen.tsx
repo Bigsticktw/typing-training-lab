@@ -5,6 +5,7 @@ import { RotateCcw, Home, Target } from 'lucide-react';
 import { KEYBOARD_LAYOUT } from '../../utils/layoutMaps';
 import { useCallback, useEffect, useMemo } from 'react';
 import { calculateAccuracy, calculateAverageLatency } from '../../utils/scoring';
+import { SheetsSyncNotice } from './SheetsSyncNotice';
 
 export const ResultScreen = () => {
     const {
@@ -161,6 +162,8 @@ export const ResultScreen = () => {
                     <div className="text-4xl font-black text-purple-400">{avgLatency}ms</div>
                 </div>
             </div>
+
+            <SheetsSyncNotice session={latestSession} />
 
             {/* 弱點熱點圖 */}
             <div className="relative mt-4 w-full flex flex-col items-center">
