@@ -1,4 +1,5 @@
 import type { GameSession } from '../store/useGameStore';
+import { loadPersonalSheetsToken } from './PersonalSheetsConfig';
 
 const QUEUE_STORAGE_KEY = 'typing-sheets-sync-queue-v1';
 const STATUS_EVENT = 'typing-sheets-sync-status';
@@ -14,6 +15,7 @@ export interface SheetSyncStatus {
 
 interface QueueEntry {
     session: GameSession;
+    personalToken?: string;
     attempts: number;
     lastAttemptAt?: string;
     lastError?: string;
@@ -24,6 +26,12 @@ interface SyncOptions {
     fetcher?: typeof fetch;
     maxAttempts?: number;
     retryDelayMs?: number;
+    visitorResolver?: () => Promise<VisitorContext>;
+}
+
+export interface VisitorContext {
+    countryCode: string;
+    ip: string;
 }
 
 let activeSync: Promise<SheetSyncStatus> | null = null;
@@ -52,6 +60,28 @@ const wait = (milliseconds: number) => new Promise<void>((resolve) => {
     window.setTimeout(resolve, milliseconds);
 });
 
+let cachedVisitorContext: VisitorContext | null = null;
+
+export const resolveVisitorContext = async (): Promise<VisitorContext> => {
+    if (cachedVisitorContext) return cachedVisitorContext;
+    let timeout = 0;
+    try {
+        const controller = new AbortController();
+        timeout = window.setTimeout(() => controller.abort(), 2_000);
+        const response = await fetch('https://api.country.is/', { signal: controller.signal });
+        if (!response.ok) throw new Error(`Country lookup failed: HTTP ${response.status}`);
+        const result = await response.json() as { country?: string; ip?: string };
+        const countryCode = /^[A-Z]{2}$/.test(result.country ?? '') ? result.country! : '';
+        const ip = /^[0-9a-fA-F:.]{3,64}$/.test(result.ip ?? '') ? result.ip! : '';
+        cachedVisitorContext = { countryCode, ip };
+        return cachedVisitorContext;
+    } catch {
+        return { countryCode: '', ip: '' };
+    } finally {
+        if (timeout) window.clearTimeout(timeout);
+    }
+};
+
 const averageByKey = (values: Record<string, number[]>) => Object.fromEntries(
     Object.entries(values).map(([key, latencies]) => [
         key,
@@ -79,10 +109,10 @@ export const toSheetPayload = (session: GameSession) => ({
     keyLatencyAverageMs: averageByKey(session.keyLatencies),
 });
 
-export const queueSessionForSheets = (session: GameSession) => {
+export const queueSessionForSheets = (session: GameSession, personalToken = loadPersonalSheetsToken()) => {
     const queue = readQueue();
     if (!queue.some((entry) => entry.session.id === session.id)) {
-        queue.push({ session, attempts: 0 });
+        queue.push({ session, personalToken: personalToken.trim() || undefined, attempts: 0 });
         writeQueue(queue);
     }
     return queue.length;
@@ -100,6 +130,7 @@ const syncQueue = async ({
     fetcher = fetch,
     maxAttempts = 3,
     retryDelayMs = 600,
+    visitorResolver = resolveVisitorContext,
 }: SyncOptions = {}): Promise<SheetSyncStatus> => {
     let queue = readQueue();
     if (!endpoint) {
@@ -118,12 +149,17 @@ const syncQueue = async ({
 
     for (const queued of [...queue]) {
         let uploaded = false;
+        const visitor = await visitorResolver();
         for (let attempt = 1; attempt <= maxAttempts && !uploaded; attempt += 1) {
             try {
                 const response = await fetcher(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(toSheetPayload(queued.session)),
+                    body: JSON.stringify({
+                        token: queued.personalToken ?? '',
+                        visitor,
+                        payload: toSheetPayload(queued.session),
+                    }),
                     redirect: 'follow',
                 });
                 const result = await response.json() as { ok?: boolean; error?: string };

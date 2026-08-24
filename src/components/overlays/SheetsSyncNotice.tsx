@@ -7,6 +7,7 @@ import {
     type SheetSyncStatus,
 } from '../../services/GoogleSheetsSync';
 import type { GameSession } from '../../store/useGameStore';
+import { loadPersonalSheetsToken } from '../../services/PersonalSheetsConfig';
 
 interface SheetsSyncNoticeProps {
     session?: GameSession;
@@ -14,6 +15,7 @@ interface SheetsSyncNoticeProps {
 
 export const SheetsSyncNotice = ({ session }: SheetsSyncNoticeProps) => {
     const [status, setStatus] = useState<SheetSyncStatus>(getInitialSheetSyncStatus);
+    const personalMode = Boolean(loadPersonalSheetsToken());
 
     useEffect(() => subscribeToSheetSyncStatus(setStatus), []);
 
@@ -23,12 +25,12 @@ export const SheetsSyncNotice = ({ session }: SheetsSyncNoticeProps) => {
         void syncPendingSheetsSessions();
     }, [session]);
 
-    if (!session) return null;
+    if (!session || !personalMode) return null;
 
     const label = status.phase === 'syncing'
-        ? `正在同步 Google Sheets（${status.pendingCount} 筆）…`
+        ? `正在同步到你的私人 Google Sheet（${status.pendingCount} 筆）…`
         : status.phase === 'synced'
-            ? '本次訓練已同步至 Google Sheets。'
+            ? '本次訓練已同步到你的私人 Google Sheet。'
             : status.phase === 'disabled'
                 ? 'Google Sheets 尚未設定；本次訓練仍已保存在此裝置。'
                 : status.phase === 'error'
