@@ -7,6 +7,7 @@ import {
     toSheetPayload,
 } from './GoogleSheetsSync';
 import type { GameSession } from '../store/useGameStore';
+import { isValidPersonalSheetsToken, savePersonalSheetsToken } from './PersonalSheetsConfig';
 
 const session: GameSession = {
     id: 'session-id',
@@ -55,11 +56,38 @@ describe('Google Sheets sync queue', () => {
             endpoint: 'https://script.google.com/macros/s/example/exec',
             fetcher,
             retryDelayMs: 0,
+            visitorResolver: async () => ({ countryCode: 'TW', ip: '203.0.113.7' }),
         });
 
         expect(result).toMatchObject({ phase: 'synced', pendingCount: 0 });
         expect(getPendingSheetsSessionIds()).toEqual([]);
         expect(fetcher).toHaveBeenCalledTimes(1);
+        const request = fetcher.mock.calls[0][1] as RequestInit;
+        expect(JSON.parse(String(request.body))).toMatchObject({
+            token: '',
+            visitor: { countryCode: 'TW', ip: '203.0.113.7' },
+            payload: { sessionId: 'session-id' },
+        });
+    });
+
+    it('captures the private token with the queued session', async () => {
+        savePersonalSheetsToken('a'.repeat(32));
+        queueSessionForSheets(session);
+        const fetcher = vi.fn<typeof fetch>().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true }),
+        } as Response);
+
+        await syncPendingSheetsSessions({
+            endpoint: 'https://script.google.com/macros/s/example/exec',
+            fetcher,
+            retryDelayMs: 0,
+            visitorResolver: async () => ({ countryCode: '', ip: '' }),
+        });
+
+        const request = fetcher.mock.calls[0][1] as RequestInit;
+        expect(JSON.parse(String(request.body)).token).toBe('a'.repeat(32));
     });
 
     it('retries a transient error and preserves a failed session', async () => {
@@ -71,10 +99,17 @@ describe('Google Sheets sync queue', () => {
             fetcher,
             maxAttempts: 2,
             retryDelayMs: 0,
+            visitorResolver: async () => ({ countryCode: '', ip: '' }),
         });
 
         expect(result).toMatchObject({ phase: 'error', pendingCount: 1, message: 'offline' });
         expect(fetcher).toHaveBeenCalledTimes(2);
         expect(getPendingSheetsSessionIds()).toEqual(['session-id']);
+    });
+
+    it('accepts an empty public token or a sufficiently long private token', () => {
+        expect(isValidPersonalSheetsToken('')).toBe(true);
+        expect(isValidPersonalSheetsToken('short')).toBe(false);
+        expect(isValidPersonalSheetsToken('x'.repeat(24))).toBe(true);
     });
 });

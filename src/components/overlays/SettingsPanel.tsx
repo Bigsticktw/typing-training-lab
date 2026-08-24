@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
+import { isValidPersonalSheetsToken, loadPersonalSheetsToken, savePersonalSheetsToken } from '../../services/PersonalSheetsConfig';
 
 export const SettingsPanel = () => {
     const {
@@ -23,6 +24,8 @@ export const SettingsPanel = () => {
     const [keyString, setKeyString] = useState('');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
+    const [personalToken, setPersonalToken] = useState(loadPersonalSheetsToken);
+    const [tokenSaved, setTokenSaved] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
     const themeRef = useRef<HTMLDivElement>(null);
 
@@ -37,6 +40,13 @@ export const SettingsPanel = () => {
         if (keyString.trim()) {
             selectKeysFromString(keyString);
         }
+    };
+
+    const handlePersonalTokenSave = () => {
+        if (!isValidPersonalSheetsToken(personalToken)) return;
+        setPersonalToken(savePersonalSheetsToken(personalToken));
+        setTokenSaved(true);
+        window.setTimeout(() => setTokenSaved(false), 2_000);
     };
 
     // 點擊外部收起
@@ -302,6 +312,34 @@ export const SettingsPanel = () => {
                                 disabled={!soundEnabled}
                             />
                         </div>
+                    </div>
+
+                    <div className="w-full h-px bg-[var(--text-secondary)]/5 my-1" />
+
+                    <div className="flex flex-col gap-2">
+                        <span className="opacity-50 text-[10px] uppercase font-black">私人 Google Sheet（選填）</span>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="password"
+                                value={personalToken}
+                                onChange={(event) => { setPersonalToken(event.target.value); setTokenSaved(false); }}
+                                placeholder="貼上你的私人 Token"
+                                autoComplete="off"
+                                className="flex-1 px-3 py-2 bg-[var(--bg-primary)] rounded-xl text-xs outline-none focus:ring-1 focus:ring-[var(--accent)]/50"
+                                disabled={isDisabled}
+                            />
+                            <button
+                                type="button"
+                                onClick={handlePersonalTokenSave}
+                                disabled={isDisabled || !isValidPersonalSheetsToken(personalToken)}
+                                className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-primary)] rounded-xl font-bold disabled:opacity-30"
+                            >
+                                {tokenSaved ? '已儲存' : '儲存'}
+                            </button>
+                        </div>
+                        <p className="text-[10px] opacity-50 leading-relaxed">
+                            留空會匿名加入公開統計，且訓練結果不顯示同步訊息。公開統計只保存國家代碼與不可逆 IP 雜湊，不保存完整 IP。
+                        </p>
                     </div>
 
                     {useCustomKeys && (
